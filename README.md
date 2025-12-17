@@ -20,9 +20,9 @@ Clinicians often find genetic mutations (variants) in patients but don’t know 
 ```
 src
  ├── data/
-      ├── raw/
-           ├── variant_summary.txt # Ground truth labels
-           ├── UP000005640_9606_HUMAN_v4/ # 3D structures in .pdb.gz format
-           ├── human_reviewed.fasta # Sequences
-           ├── human_id_mapping.tsv # Metadata table with RefSeq and AlphaFold columns         
+ ├── raw/ # Not committed due to file
+    ├── variant_summary.txt # Ground truth labels
+    ├── alphaFold_human/ # 3D structures in .pdb.gz format
+    ├── human_reviewed.fasta # Sequences
+    ├── human_id_mapping.tsv # Metadata table with RefSeq and AlphaFold columns         
 ```
