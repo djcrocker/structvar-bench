@@ -19,9 +19,6 @@ CLINVAR_PATH = os.path.join(BASE_DIR, 'data', 'raw', 'variant_summary.txt')
 MAPPING_PATH = os.path.join(BASE_DIR, 'data', 'raw', 'human_id_mapping.tsv')
 OUTPUT_PATH = os.path.join(BASE_DIR, 'data', 'processed', 'cohort_mapped.csv')
 
-# Create processed folder if it doesn't exist
-os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-
 def parse_amino_acid_change(name):
     """
     Extracts the amino acid (AA) change from the ClinVar Name string.
@@ -50,31 +47,42 @@ def build_cohort():
     # FILTER 1: GENOME ASSEMBLY #
     # We only want the latest human genome build
     df = df[df['Assembly'] == 'GRCh38']
-    print(f"Rows after Assembly 'GRCh38' filter: {len(df)}")
+    print(f"Rows after Assembly 'GRCh38' filter (1): {len(df)}")
     
-    # FILTER 2: VARIANT TYPE #
+    # FILTER 2A: VARIANT TYPE #
     # We only want Single Nucleotide Variants (SNVs)
     df = df[df['Type'] == 'single nucleotide variant']
-    print(f"Rows after SNV filter: {len(df)}")
+    print(f"Rows after SNV filter (2): {len(df)}")
 
     # FILTER 3: REVIEW STATUS #
     # We reject 'no assertion criteria provided' or 'no assertion for the individual variant'
     # We accept: 'criteria provided...', 'reviewed by expert panel', 'practice guideline'
     bad_status = ['no assertion criteria provided', 'no assertion for the individual variant']
     df = df[~df['ReviewStatus'].isin(bad_status)]
-    print(f"Rows after ReviewStatus filter: {len(df)}")
+    print(f"Rows after ReviewStatus filter (3): {len(df)}")
 
-    # FILTER 4: MISSENSE EXTRACTION #
+    # FILTER 4A: MISSENSE EXTRACTION #
     # Apply the regex function to the 'Name' column, creating a DataFrame with 3 new columns
     aa_data = df['Name'].apply(lambda x: pd.Series(parse_amino_acid_change(x)))
     aa_data.columns = ['WildType', 'ResidueIndex', 'MutantAA']
 
-    # Join these new columns to our main DataFrame
+    # Join new columns to the main DataFrame
     df = pd.concat([df, aa_data], axis=1)
 
-    # Drop rows where Regex failed (meaning it wasn't a standard missense mutation)
+    # Drop rows where Regex failed (not a standard missense mutation)
     df = df.dropna(subset=['WildType', 'ResidueIndex'])
-    print(f"Rows after Missense Extraction: {len(df)}")
+
+    print(f"Rows after Missense Extraction (4A): {len(df)}")
+
+    # FILTER 4B: ELIMINATE NONSENSE & SILENT MUTATIONS #
+    # Single nucleotide mutations (SNMs) can lead to nonsense mutations, where the codon is changed to the stop codon "Ter".
+    # SNMs can also lead to silent mutations, where changing a nucleotide does not change the coded amino acid.
+    
+    initial_missense = len(df)
+    df = df[df['MutantAA'] != 'Ter'] # Remove if Mutant AA is "Ter" (nonsense mutation)
+    df = df[df['WildType'] != df['MutantAA']] # Remove if WildType == MutantAA (silent mutation)
+
+    print(f"Rows after Nonsense & Silent Eliminations (4B): {len(df)}")
 
     # FILTER 5: CLINICAL SIGNIFICANCE #
     # Group into 0 (Benign) and 1 (Pathogenic)
@@ -112,7 +120,7 @@ def build_cohort():
 
         # Merge
         merged_df = pd.merge(df, mapping_df, on='GeneSymbol', how='inner')
-        print(f"Rows after Mapping to UniProt IDs: {len(merged_df)}")
+        print(f"Rows after Mapping to UniProt IDs (5): {len(merged_df)}")
 
     except Exception as e:
         print(f"WARNING: Mapping failed: {e}")
@@ -120,7 +128,7 @@ def build_cohort():
         merged_df = df
 
     # SAVE #
-    print(f"\n{datetime.now().strftime('%H:%M:%S')}: Saving final cohort to {OUTPUT_PATH}")
+    print(f"\n{datetime.now().strftime('%H:%M:%S')}: Saving mapped cohort to {OUTPUT_PATH}")
     columns_to_keep = ['Name', 'GeneSymbol', 'UniProtID', 'Chromosome', 'WildType', 'ResidueIndex', 'MutantAA', 'Class', 'ReviewStatus']
     final_cols = [c for c in columns_to_keep if c in merged_df.columns]
 

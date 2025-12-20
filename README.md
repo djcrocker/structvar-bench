@@ -18,11 +18,22 @@ Clinicians often find genetic mutations (variants) in patients but don’t know 
 
 # 🗺️ File Structure
 ```
-src
- ├── data/
- ├── raw/ # Not committed due to file
-    ├── variant_summary.txt # Ground truth labels
-    ├── alphaFold_human/ # 3D structures in .pdb.gz format
-    ├── human_reviewed.fasta # Sequences
-    ├── human_id_mapping.tsv # Metadata table with RefSeq and AlphaFold columns         
+src/
+├── data/
+    ├── verify_integrity.py         # Checks proper file and column loading for ClinVar and AlphaFold (1 sample) files
+    ├── build_cohort.py             # Filters cohort to only human entries that meet criteria, maps to UniProt IDs, outputs CSV
+    ├── filter_structures.py        # Cross-references structures from the mapped cohort with the AlphaFold DB
+├── tools/                          # Not committed
+    ├── foldx/
+        ├── foldx                   # FoldX executable
+        ├── molecules/              # FoldX database files
+data/                               # Not committed due to size
+├── raw/ 
+    ├── variant_summary.txt         # Ground truth labels
+    ├── alphaFold_human/            # 3D structures in .pdb.gz or .cif.gz format
+    ├── human_reviewed.fasta        # Sequences
+    ├── human_id_mapping.tsv        # Metadata table with RefSeq and AlphaFold columns    
+├── processed/ 
+    ├── cohort_mapped.csv           # Filtered ClinVar file mapped to UniProt IDs
+    ├── cohort_filtered.csv         # Mapped cohort filtered to reviewed, pathogenic & benign, SNVs that have an AlphaFold match
 ```

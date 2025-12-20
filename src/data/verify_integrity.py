@@ -4,7 +4,7 @@ Checks proper file and column loading for ClinVar and AlphaFold (1 sample) files
 
 import pandas as pd
 import gzip
-from Bio.PDB.MMCIFParser import MMCIFParser
+from Bio.PDB import MMCIFParser, PDBParser
 import os
 
 # CONFIGURATION #
@@ -20,7 +20,6 @@ def check_clinvar():
         return
     
     try:
-        # Pandas handles .gz automatically based on the extension
         df = pd.read_csv(CLINVAR_PATH, sep='\t', low_memory=False) # Tab-separated, low_memory=False handles DtypeWarning
         print(f"SUCCESS: File loaded successfully. Total Rows: {len(df)}")
         
@@ -47,13 +46,17 @@ def check_alphafold():
         return
     
     try:
-        # Parse the structure using MMCIFParser + gzip
+        if ALPHAFOLD_TEST_FILE.endswith('.cif.gz'):
+            parser = MMCIFParser(QUIET=True)
+        else: # .pdb.gz
+            parser = PDBParser(QUIET=True)
+
+        # Parse the structure using MMCIFParser/PDBParser + gzip
         # Open the .gz file in 'rt' (Read Text) mode and pass the handle to Biopython
         with gzip.open(ALPHAFOLD_TEST_FILE, 'rt') as handle:
-            parser = MMCIFParser(QUIET=True)
             # Bioython reads directly from the unzipped stream
             structure = parser.get_structure('test_protein', handle)
-        print("SUCCESS: CIF.gz file parsed successfully.")
+        print("SUCCESS: .gz file parsed successfully.")
         
         # Check for pLDDT Scores (B-factors)
         first_model = structure[0]
@@ -71,7 +74,7 @@ def check_alphafold():
             print(f"WARNING: Unusual pLDDT score: {b_factor}. Check if this is a standard AF output.")
 
     except Exception as e:
-        print(f"FAILURE: Failed to parse CIF file: {e}")
+        print(f"FAILURE: Failed to parse file: {e}")
 
 if __name__ == "__main__":
     print("Starting Integrity Verification\n")
