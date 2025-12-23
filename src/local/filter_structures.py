@@ -81,10 +81,12 @@ def filter_cohort():
 
     df['StructureFile'] = df['UniProtID'].map(file_map)
 
-    # FILTER 1: MISSING FILES #
+    # MISSING FILES - Step 2.II #
     before_count = len(df)
     df = df.dropna(subset=['StructureFile'])
     print(f"Dropped {before_count - len(df)} rows missing structure files.")
+
+    # LOW pLDDT SCORE - Step 2.III#
 
     print(f"\n{datetime.now().strftime('%H:%M:%S')}: Checking pLDDT scores...")
     

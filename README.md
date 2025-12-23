@@ -19,7 +19,7 @@ Clinicians often find genetic mutations (variants) in patients but don’t know 
 # 🗺️ File Structure
 ```
 src/
-├── data/
+├── local/
     ├── verify_integrity.py         # Checks proper file and column loading for ClinVar and AlphaFold (1 sample) files
     ├── build_cohort.py             # Filters cohort to only human entries that meet criteria, maps to UniProt IDs, outputs CSV
     ├── filter_structures.py        # Cross-references structures from the mapped cohort with the AlphaFold DB
@@ -36,4 +36,5 @@ data/                               # Not committed due to size
 ├── processed/ 
     ├── cohort_mapped.csv           # Filtered ClinVar file mapped to UniProt IDs
     ├── cohort_filtered.csv         # Mapped cohort filtered to reviewed, pathogenic & benign, SNVs that have an AlphaFold match
+    ├── cohort_with_ddg.csv         # Cohort with FoldX ran on it and ddG values extracted
 ```
