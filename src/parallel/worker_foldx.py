@@ -4,6 +4,7 @@ Performs structure repair and energy extraction by doing the following (call the
 - Runs FoldX RepairPDB (thermodynamic minimization) on A12345.pdb, resulting in A12345_Repair.pdb (saves repaired A12345-OriginalResidueMutant.pdb to /data/processed/structures/)
 - Runs FoldX BuildModel (mutation) on A12345_Repair.pdb, resulting in Dif_A12345_Repair.fxout
 - Looks through .fxout for ddG value, adds value to cohort_with_ddg.csv
+Usage: python3 src/parallel/worker_foldx.py --worker_id # --batch_size #
 """
 
 import pandas as pd
@@ -14,27 +15,37 @@ from Bio.PDB import MMCIFParser, PDBParser, PDBIO, Select
 from Bio.SeqUtils import seq1
 import shutil
 from datetime import datetime
+import argparse
 
-# CONFIGURATION #
+# ARGUMENT PARSING #
+# Lets us run: python3 src/parallel/worker_foldx.py --worker_id 1
+parser = argparse.ArgumentParser()
+parser.add_argument('--worker_id', type=str, default='1', help='ID for this parallel worker (1, 2, 3...)')
+parser.add_argument('--batch_size', type=int, default='1', help='Number of rows to process')
+args = parser.parse_args()
+WORKER_ID = args.worker_id
+BATCH_LIMIT = args.batch_size
+
+# GLOBAL CONFIGURATION
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-INPUT_CSV = os.path.join(BASE_DIR, 'data', 'processed', 'cohort_filtered.csv')
-OUTPUT_CSV = os.path.join(BASE_DIR, 'data', 'processed', 'cohort_with_ddg.csv')
 ALPHAFOLD_DIR = os.path.join(BASE_DIR, 'data', 'raw', 'alphaFold_human') 
 
-# FOLDX PATHS #
+# INPUT/OUTPUT (depends on the Worker ID) #
+# e.g. cohort_part_1.csv -> cohort_with_ddg_1.csv
+INPUT_CSV = os.path.join(BASE_DIR, 'data', 'processed', f'cohort_part_{WORKER_ID}.csv')
+OUTPUT_CSV = os.path.join(BASE_DIR, 'data', 'processed', f'cohort_with_ddg_{WORKER_ID}.csv')
+
+# FOLDX PATH #
 FOLDX_BIN = os.path.join(BASE_DIR, 'tools', 'foldx', 'foldx')
-WORK_DIR = os.path.join(BASE_DIR, 'data', 'processed', 'foldx_workspace')
-os.makedirs(WORK_DIR, exist_ok=True) # Ensure workspace exists
-os.makedirs(os.path.join(BASE_DIR, 'data', 'processed', 'structures'), exist_ok=True) # Ensure final structures folder exists
+
+# UNIQUE WORKER WORKSPACES #
+WORK_DIR = os.path.join(BASE_DIR, 'data', 'processed', f'foldx_workspace_{WORKER_ID}')
+os.makedirs(WORK_DIR, exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, 'data', 'processed', 'structures'), exist_ok=True)
 
 # PILOT MODE #
-# Since cohort_filtered.csv has nearly 100,000 rows, testing an initial batch will ensure the code works without waiting for weeks
 PILOT_MODE = False
 PILOT_SIZE = 5
-
-# BATCH CONTROL #
-# How many mutations before stopping automatically? (Total = 99592)
-BATCH_LIMIT = 1000 # Set to None for forever
 
 class ChainASelect(Select):
     """AlphaFold models often have confident regions in Chain A. 
@@ -150,8 +161,8 @@ def run_foldx_process(df):
             
             # Run inside WORK_DIR so output files stay there
             try:
-                # subprocess.run(cmd, cwd=WORK_DIR, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-                subprocess.run(cmd, cwd=WORK_DIR, check=True) # Use to see FoldX working
+                subprocess.run(cmd, cwd=WORK_DIR, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                # subprocess.run(cmd, cwd=WORK_DIR, check=True) # Use to see FoldX working
             except subprocess.CalledProcessError:
                 print("  > FoldX Repair crashed. Skipping.")
                 continue
@@ -278,7 +289,7 @@ def run_foldx_process(df):
             print(f"BATCH SAVED ({len(results_batch)} mutations). Session Total: {variants_processed_session}")
 
         if BATCH_LIMIT and variants_processed_session >= BATCH_LIMIT:
-            print(f"\nBatch limit of {BATCH_LIMIT} reached (Processed {variants_processed_session}). Stopping safely.")
+            print(f"\n{datetime.now().strftime('%H:%M:%S')}: Batch limit of {BATCH_LIMIT} reached (Processed {variants_processed_session}). Stopping safely.")
             break
 
 if __name__ == "__main__":
@@ -294,34 +305,3 @@ if __name__ == "__main__":
         print(f"Batch Limit Active: {BATCH_LIMIT} new rows to be processed.")
 
     run_foldx_process(df)
-
-"""
-When repairing proteins, FoldX will output categories and numbers. Below are explanations for them.
-Term | Meaning | Better Sign | Why
-
-BackHbond | Hydrogen bonds involving protein backbone atoms | Negative | Backbone H-bonds stabilize secondary structure (a-helices, B-sheets)
-SideHbond | Hydrogen bonds involving side chains | Negative | Favorable residue-residue or residue-ligand interactions
-Energy_VdW | Attractive van der Waals interactions | Negative | Tight packing and hydrophobic contacts stabilize structures
-Electro | Electrostatic (Coulombic) interactions | Negative | Opposite charges attract; salt bridges stabilize
-Energy_SolvP | Polar solvation energy (desolvation cost of polar groups) | Less positive | Removing polar groups from water costs energy
-Energy_SolvH | Hydrophobic solvation energy | Negative | Hydrophobic burial releases ordered water (favorable)
-Energy_vdwclash | Steric clashes between atoms | Negative or near zero | Positive means atoms overlap unrealistically
-energy_torsion | Torsional strain from bond rotations | Negative or low | High values indicate strained conformations
-backbone_vdwclash | Steric clashes specifically in the protein backbone | Negative or near zero | Large positive values are very unfavorable
-Entropy_sidec | Loss of side-chain conformational entropy | Lower positive | Side chains become more rigid upon folding/binding
-Entropy_mainc | Loss of backbone conformational entropy | Lower positive | Backbone ordering is a major entropic cost
-water bonds | Explicit water-mediated hydrogen bonds | Negative | Bridging waters can stabilize interactions
-helix dipole | Electrostatic effect of a-helix macrodipoles | Negative | Favorable alignment stabilizes helices
-loop_entropy | Entropic cost of loop ordering | Lower positive | Flexible loops lose entropy when fixed
-cis_bond | Penalty for cis peptide bonds | Zero or negative | Cis bonds are usually unfavorable unless required
-disulfide | Energy contribution from disulfide bonds | Negative | Covalent crosslinks strongly stabilize
-kn electrostatic | Knowledge-based electrostatics term | Negative | Statistical preference for favorable charge patterns
-partial covalent interactions | Metal coordination / partial covalent effects | Negative | Stabilizing when present
-Energy_Ionisation | Cost of changing protonation states | Lower positive | Protonation shifts cost energy
-Entropy Complex | Overall entropy change upon complex formation | Lower positive | Binding reduces translational/rotational freedom
-
-Rule of thumb:
-Energies: more negative = better (stabilizing)
-Penalties/strain/clashes: more positive = worse
-Entropy: depends on context, but loss of entropy (positive penalty) is usually unfavorable for binding/folding
-"""
