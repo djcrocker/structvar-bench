@@ -15,6 +15,7 @@ from Bio.PDB import MMCIFParser, PDBParser, PDBIO, Select
 from Bio.SeqUtils import seq1
 import shutil
 from datetime import datetime
+import time
 import argparse
 
 # ARGUMENT PARSING #
@@ -68,6 +69,22 @@ def convert_cif_to_pdb(structure_path, output_pdb_path):
                 structure = parser.get_structure('temp', f)
         else:
             structure = parser.get_structure('temp', structure_path)
+
+        # Rename the first chain to 'A' to satisfy FoldX
+        model = structure[0]
+        chains = list(model.get_chains())
+        
+        if len(chains) == 0:
+            print(f"Error: No chains found in {structure_path}")
+            return False
+            
+        first_chain = chains[0]
+        first_chain.id = 'A' # Force rename to A
+        
+        # Save only this chain
+        class FirstChainSelect(Select):
+            def accept_chain(self, chain):
+                return chain == first_chain
         
         # Now save as clean PDB
         io = PDBIO()
@@ -83,6 +100,7 @@ def get_1letter_code(aa3: str):
     return seq1(aa3)
     
 def run_foldx_process(df):
+    start_time = time.time()
     # Load existing results
     completed_keys = set()
     write_header = True
@@ -141,7 +159,7 @@ def run_foldx_process(df):
         repaired_pdb_name = f"{uniprot_id}_Repair.pdb" # FoldX naming convention
         
         # Check if already repaired
-        if not os.path.exists(os.path.join(WORK_DIR, repaired_pdb_name)):
+        if not os.path.exists(os.path.join(WORK_DIR, repaired_pdb_name)) or not os.path.exists(os.path.join(BASE_DIR, 'data', 'processed', 'structures', f"WT_{uniprot_id}.pdb")):
             # Convert CIF -> PDB
             print(f"  > Converting CIF to PDB...")
             if not convert_cif_to_pdb(cif_path, os.path.join(WORK_DIR, raw_pdb_name)):
@@ -166,6 +184,12 @@ def run_foldx_process(df):
             except subprocess.CalledProcessError:
                 print("  > FoldX Repair crashed. Skipping.")
                 continue
+
+            shutil.copy(
+                os.path.join(WORK_DIR, repaired_pdb_name), 
+                os.path.join(BASE_DIR, 'data', 'processed', 'structures', f"WT_{uniprot_id}.pdb")
+            )
+
         else:
             print("  > Repaired structure found. Using cached version.")
 
@@ -250,7 +274,7 @@ def run_foldx_process(df):
                 variants_processed_session += 1
 
                 print(f"\n  > Done. ddG: {ddg_val}")
-                print(f"Processed variants in session: {variants_processed_session}")
+                print(f"Processed variants in session: {variants_processed_session}/{BATCH_LIMIT if BATCH_LIMIT else '∞'}")
 
                 # Clean up intermediate files
                 try:
@@ -290,6 +314,10 @@ def run_foldx_process(df):
 
         if BATCH_LIMIT and variants_processed_session >= BATCH_LIMIT:
             print(f"\n{datetime.now().strftime('%H:%M:%S')}: Batch limit of {BATCH_LIMIT} reached (Processed {variants_processed_session}). Stopping safely.")
+            total_time = time.time() - start_time
+            hours_taken = total_time / 3600
+            avg_mutations_per_hour = variants_processed_session / hours_taken
+            print(f"{hours_taken:.2f} hours taken. Average mutations per hour: {avg_mutations_per_hour:.2f}")
             break
 
 if __name__ == "__main__":

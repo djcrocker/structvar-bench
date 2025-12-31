@@ -14,8 +14,8 @@ import numpy as np
 # CONFIGURATION #
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # INPUT_CSV = os.path.join(BASE_DIR, 'data', 'processed', 'cohort_filtered.csv')
-INPUT_CSV = os.path.join(BASE_DIR, 'data', 'processed', 'cohort_part_6.csv')
-NUM_CHUNKS = 6
+INPUT_CSV = os.path.join(BASE_DIR, 'data', 'processed', 'cohort_part_5.csv')
+NUM_CHUNKS = 4
 
 def split_csv():
     print(f"Loading {INPUT_CSV}")
@@ -37,7 +37,7 @@ def split_csv():
     
     for i, chunk in enumerate(chunks):
         worker_id = i + 1
-        output_name = f"cohort_part_6_{worker_id}.csv"
+        output_name = f"cohort_part_5_{worker_id}.csv"
         output_path = os.path.join(BASE_DIR, 'data', 'processed', output_name)
         
         chunk.to_csv(output_path, index=False)
